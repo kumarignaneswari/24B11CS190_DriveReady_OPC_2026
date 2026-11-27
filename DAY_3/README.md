@@ -47,5 +47,5 @@ A conversational AI assistant built with Python, LangChain, and Groq (`openai/gp
 
 - **Setup:** Uses `python-dotenv` to load the `GROQ_API_KEY` and initializes `ChatGroq` with `temperature=0.3` for consistent, reliable answers.
 - **Prompt & Chain:** Combines a structured `ChatPromptTemplate` with `StrOutputParser` using LangChain Expression Language (`prompt | llm | StrOutputParser()`).
-- **Testing:** Reads `tests.csv` via Python's built-in `csv` module, runs stateless queries against the chain, and checks if the required substring (`must_include`) appears in the output.
+- **Testing:** Reads `tests.csv` via Python's built-in `csv` module, runs stateless queries against the chain, and checks if the required substring (`must_include`) appears in the output
 
