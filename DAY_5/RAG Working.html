@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How RAG Works — Scroll-Driven Walkthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#070b1c;--fg:#e8ecff;--mut:#9aa6d4;--card:rgba(20,28,64,.62);--bd:rgba(120,150,255,.28);--c1:#3d8bff;--c2:#9b6bff;--c3:#19d3c5;--gold:#ffc83d;--grid:rgba(90,120,255,.09);--sh:0 20px 60px rgba(0,0,0,.5);--blur:0px}
+[data-theme=light]{--bg:#eef1f7;--fg:#141a33;--mut:#4a5578;--card:rgba(255,255,255,.82);--bd:rgba(40,60,140,.2);--c1:#2457d6;--c2:#7a3fd1;--c3:#0e9a91;--gold:#c98a00;--grid:rgba(40,60,140,.07);--sh:0 16px 40px rgba(30,40,90,.16)}
+*{box-sizing:border-box;margin:0}
+html,body{overflow-x:hidden}
+body{background:var(--bg);color:var(--fg);font-family:Sora,system-ui,sans-serif;transition:background .5s,color .5s}
+#bar{position:fixed;top:0;left:0;height:3px;width:100%;background:linear-gradient(90deg,var(--c1),var(--c2),var(--c3));transform:scaleX(0);transform-origin:0 0;z-index:30}
+header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;gap:12px}
+nav{display:flex;gap:4px;flex-wrap:wrap;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:4px;backdrop-filter:blur(12px)}
+nav button{all:unset;cursor:pointer;font-size:12px;padding:7px 10px;border-radius:10px;color:var(--mut);transition:.3s}
+nav button b{font-weight:700;margin-right:5px}
+nav button.on{background:var(--c1);color:#fff}
+nav button:focus-visible,#theme:focus-visible,#replay:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+#theme{cursor:pointer;width:42px;height:42px;border-radius:50%;border:1px solid var(--bd);background:var(--card);color:var(--fg);font-size:18px;backdrop-filter:blur(12px)}
+#stage{height:100vh;position:relative;overflow:hidden;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:48px 48px;perspective:1200px}
+.sc{position:absolute;inset:0;padding:84px 4vw 28px;display:flex;flex-direction:column;visibility:hidden}
+.sc h2{font-size:clamp(22px,3.4vw,40px);font-weight:700;letter-spacing:-.02em}
+.sc .sub{color:var(--mut);margin-top:6px;font-size:clamp(13px,1.5vw,17px)}
+.area{position:relative;flex:1}
+.note{max-width:760px;font-size:clamp(12px,1.25vw,15px);line-height:1.5;color:var(--mut);border-left:3px solid var(--c1);padding-left:12px}
+.note i{display:block;margin-top:4px;color:var(--gold);font-style:normal}
+.c{position:absolute;left:50%;top:50%}
+.h{opacity:0}
+.mv{filter:blur(var(--blur))}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px 16px;box-shadow:var(--sh);backdrop-filter:blur(10px);font-size:clamp(11px,1.15vw,14px);line-height:1.5;transform-style:preserve-3d}
+.card small{display:block;color:var(--mut);margin-bottom:4px;font-weight:600}
+.w1{width:min(560px,86vw)}.w2{width:min(300px,38vw)}.w3{width:min(340px,40vw)}
+.k1{border-color:var(--c1)}.k2{border-color:var(--c2)}.k3{border-color:var(--c3)}
+.k1 small{color:var(--c1)}.k2 small{color:var(--c2)}.k3 small{color:var(--c3)}
+.mono{font-family:"IBM Plex Mono",monospace;font-size:clamp(10px,1.1vw,13px)}
+.model{width:min(210px,30vw);text-align:center;border-radius:22px;padding:18px;background:radial-gradient(circle,rgba(155,107,255,.35),var(--card));border:1px solid var(--c2);box-shadow:0 0 50px rgba(155,107,255,.45)}
+.model svg{width:100%;height:70px}
+.cut{position:absolute;left:-4%;right:-4%;height:2px;background:var(--gold);transform-origin:0 50%;box-shadow:0 0 10px var(--gold)}
+.db{width:min(290px,34vw);border-radius:18px;border:1px solid var(--c3);background:linear-gradient(180deg,rgba(25,211,197,.14),var(--card));padding:12px;box-shadow:0 0 40px rgba(25,211,197,.25)}
+.db .rec{font-size:clamp(9px,.95vw,11px);margin-top:6px;padding:6px;border-radius:8px;border:1px solid var(--bd);line-height:1.35}
+.gold{color:var(--gold)}
+svg text{fill:var(--fg);font-family:Sora,sans-serif}
+.cur::after{content:"▍";color:var(--c1)}
+.arch{position:absolute;inset:0;background:var(--bg);z-index:5;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding:80px 4vw 24px;text-align:center}
+.flow{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;font-size:clamp(10px,1.2vw,14px)}
+.flow span.n{padding:8px 11px;border-radius:10px;border:1px solid var(--bd);background:var(--card)}
+.flow span.a{color:var(--gold)}
+.flowt{font-weight:700;color:var(--mut);font-size:clamp(11px,1.2vw,14px)}
+.big{font-size:clamp(20px,3.6vw,44px);font-weight:700;background:linear-gradient(90deg,var(--c1),var(--c2),var(--c3));-webkit-background-clip:text;background-clip:text;color:transparent}
+#replay{cursor:pointer;padding:11px 22px;border-radius:12px;border:1px solid var(--c1);background:var(--c1);color:#fff;font:600 14px Sora,sans-serif}
+@media(max-width:700px){.w2,.w3{width:44vw}header{flex-direction:column;align-items:flex-end}nav button{padding:6px 7px}nav button span{display:none}}
+#gl{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.sc{z-index:2}
+#vig{position:absolute;inset:0;pointer-events:none;z-index:3;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.55) 100%)}
+[data-theme=light] #vig{background:radial-gradient(ellipse at center,transparent 60%,rgba(30,40,90,.16) 100%)}
+.card{box-shadow:var(--sh),0 0 0 1px rgba(255,255,255,.04) inset}
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<header>
+  <nav id="nav" aria-label="Scenes"></nav>
+  <button id="theme" aria-label="Switch between light and dark theme">☾</button>
+</header>
+
+<main id="stage">
+<canvas id="gl" aria-hidden="true"></canvas>
+
+<!-- 1 -->
+<section class="sc" id="s0" aria-label="Step 1">
+  <h2>Step 1: Loading Data into RAG</h2><p class="sub">Breaking large documents into meaningful chunks</p>
+  <div class="area">
+    <div class="c card w1 mv" id="doc"><small>company_knowledge.pdf — Raw Knowledge Document</small>
+      TechNova is a software company founded in 2018. Its headquarters are located in Hyderabad. The company develops AI-powered educational platforms. Its flagship product is LearnSphere, launched in 2022. LearnSphere helps students learn programming through personalized lessons.
+      <div class="cut h" style="top:33%"></div><div class="cut h" style="top:68%"></div></div>
+    <div class="c card w3 k1 h ch1 mv"><small>Chunk 001</small>TechNova is a software company founded in 2018. Its headquarters are located in Hyderabad.</div>
+    <div class="c card w3 k2 h ch2 mv"><small>Chunk 002</small>The company develops AI-powered educational platforms. Its flagship product is LearnSphere, launched in 2022.</div>
+    <div class="c card w3 k3 h ch3 mv"><small>Chunk 003</small>LearnSphere helps students learn programming through personalized lessons.</div>
+    <div class="c card model h" id="m1"><b>Embedding Model</b></div>
+  </div>
+  <p class="note">Chunking divides large documents into smaller, meaningful text segments so they can be efficiently embedded and retrieved.<i>Indexing phase</i></p>
+</section>
+
+<!-- 2 -->
+<section class="sc" id="s1" aria-label="Step 2">
+  <h2>Step 2: Converting Chunks into Vector Embeddings</h2><p class="sub">Transforming text into numerical representations</p>
+  <div class="area">
+    <div class="c card w2 k1 a2" style="font-size:11px"><small>Chunk 001</small>TechNova is a software company founded in 2018…</div>
+    <div class="c card w2 k2 a2" style="font-size:11px"><small>Chunk 002</small>The company develops AI-powered educational platforms…</div>
+    <div class="c card w2 k3 a2" style="font-size:11px"><small>Chunk 003</small>LearnSphere helps students learn programming…</div>
+    <div class="c card model" id="m2"><b>Embedding Model</b>
+      <svg viewBox="0 0 160 70" aria-hidden="true"><g id="nn" stroke="var(--c2)" stroke-width="1" fill="var(--c3)"></g></svg></div>
+    <div class="c mono h" id="vecs" style="text-align:left;line-height:2">
+      <div class="k1" style="color:var(--c1)">001 → [0.12, -0.45, 0.87, 0.23, …]</div>
+      <div style="color:var(--c2)">002 → [0.10, -0.40, 0.80, 0.31, …]</div>
+      <div style="color:var(--c3)">003 → [-0.52, 0.33, 0.05, 0.71, …]</div>
+      <div style="color:var(--mut);font-size:10px;line-height:1.4;margin-top:4px">Illustrative values, not real embeddings.</div></div>
+    <svg class="c h" id="space2" viewBox="0 0 320 240" style="width:min(380px,44vw)" aria-label="3D vector space projection">
+      <g stroke="var(--mut)" stroke-width="1.2" fill="none"><path d="M40 190 L280 190"/><path d="M40 190 L40 30"/><path d="M40 190 L110 140"/></g>
+      <text x="236" y="208" font-size="10">Dimension 1</text><text x="46" y="26" font-size="10">Dimension 2</text><text x="112" y="136" font-size="10">Dimension 3</text>
+      <circle cx="130" cy="110" r="8" fill="var(--c1)"/><circle cx="170" cy="85" r="8" fill="var(--c2)"/><circle cx="240" cy="150" r="8" fill="var(--c3)"/>
+      <text x="40" y="228" font-size="9" fill="var(--mut)">3D view is a projection of a higher-dimensional embedding</text></svg>
+    <div class="c db h" id="db2"><b>Vector Database</b>
+      <div class="rec mono k1">id 001 · “TechNova is a software company…” · [0.12, -0.45, …] · company_knowledge.pdf</div>
+      <div class="rec mono k2">id 002 · “The company develops AI-powered…” · [0.10, -0.40, …] · company_knowledge.pdf</div>
+      <div class="rec mono k3">id 003 · “LearnSphere helps students…” · [-0.52, 0.33, …] · company_knowledge.pdf</div></div>
+  </div>
+  <p class="note">An embedding model converts text into numerical vectors that capture semantic meaning. The Vector Database stores these vectors alongside their corresponding text and metadata.<i>Indexing phase</i></p>
+</section>
+
+<!-- 3 -->
+<section class="sc" id="s2" aria-label="Step 3">
+  <h2>Step 3: Converting the User Question into a Vector</h2><p class="sub">Representing the question in the same embedding space</p>
+  <div class="area">
+    <div class="c card w3" id="chat3"><small>User</small><span id="q3" class="cur"></span></div>
+    <div class="c card model h" id="m3"><b>Embedding Model</b><div style="font-size:11px;color:var(--mut)">same model as Step 2</div></div>
+    <div class="c mono h gold" id="qv">Question Vector → [0.14, -0.41, 0.82, 0.27, …]<br><span style="font-size:10px;color:var(--mut)">Illustrative values</span></div>
+    <div class="c db h" id="db3" style="width:min(220px,28vw)"><b>Vector Database</b><div style="font-size:11px;color:var(--mut);margin-top:6px">Stores chunk vectors from Step 2</div></div>
+    <div class="c h" id="gp" style="width:18px;height:18px;border-radius:50%;background:var(--gold);box-shadow:0 0 24px 8px var(--gold)"></div>
+  </div>
+  <p class="note">The user question is converted into a vector using the same embedding model so that its meaning can be compared with stored document vectors.<i>The question embedding is used for searching and is not necessarily stored permanently.</i></p>
+</section>
+
+<!-- 4 -->
+<section class="sc" id="s3" aria-label="Step 4">
+  <h2>Step 4: Finding Relevant Knowledge</h2><p class="sub">Semantic similarity search in the Vector Database</p>
+  <div class="area">
+    <svg class="c" id="space4" viewBox="0 0 640 400" style="width:min(720px,92vw)" aria-label="Vector space with search">
+      <g stroke="var(--bd)" fill="none"><path d="M40 360H620M40 360V30M40 360L140 280"/><ellipse cx="320" cy="200" rx="260" ry="140" stroke-dasharray="4 6"/></g>
+      <circle class="pl" cx="320" cy="200" r="10" fill="none" stroke="var(--gold)" stroke-width="2"/>
+      <circle class="pl" cx="320" cy="200" r="10" fill="none" stroke="var(--gold)" stroke-width="2"/>
+      <g id="p3"><circle cx="500" cy="300" r="12" fill="var(--c3)"/><text x="470" y="330" font-size="12">Chunk 003</text><text class="sc4 h" x="470" y="348" font-size="13" fill="var(--c3)">0.39</text></g>
+      <g id="p1"><circle cx="270" cy="170" r="12" fill="var(--c1)"/><text x="190" y="150" font-size="12">Chunk 001</text><text class="sc4 h" x="190" y="134" font-size="13" fill="var(--c1)">0.91</text></g>
+      <g id="p2"><circle cx="370" cy="150" r="12" fill="var(--c2)"/><text x="385" y="135" font-size="12">Chunk 002</text><text class="sc4 h" x="385" y="119" font-size="13" fill="var(--c2)">0.88</text></g>
+      <g id="pq"><circle r="9" fill="var(--gold)" style="filter:drop-shadow(0 0 10px var(--gold))"/><text x="14" y="4" font-size="12" fill="var(--gold)">Question</text></g>
+      <path class="sc4 h" d="M320 200L270 170M320 200L370 150M320 200L500 300" stroke="var(--gold)" stroke-dasharray="4 4" fill="none" id="lines4"/>
+    </svg>
+    <div class="c card h" id="ctx" style="width:min(300px,34vw)"><small>Retrieved Context (Top-2)</small>
+      <div class="k1" style="border-left:3px solid;padding-left:8px;margin-bottom:8px"><b>Chunk 001</b><br>TechNova is a software company founded in 2018. Its headquarters are located in Hyderabad.</div>
+      <div class="k2" style="border-left:3px solid;padding-left:8px"><b>Chunk 002</b><br>The company develops AI-powered educational platforms. Its flagship product is LearnSphere, launched in 2022.</div></div>
+  </div>
+  <p class="note">Vector search identifies the stored chunks whose embeddings are most semantically similar to the question embedding. Cosine similarity scores shown are demonstration values.<i>Similarity search finds relevant context, not necessarily a guaranteed correct answer.</i></p>
+</section>
+
+<!-- 5 -->
+<section class="sc" id="s4" aria-label="Step 5">
+  <h2>Step 5: Generating a Grounded Answer</h2><p class="sub">Combining retrieved knowledge with the user question</p>
+  <div class="area">
+    <div class="c card w3 h" id="uq"><small>User Question</small>Which company developed LearnSphere, and where is it located?</div>
+    <div class="c card w3 k1 h" id="rc1"><small>Chunk 001</small>TechNova is a software company founded in 2018. Its headquarters are located in Hyderabad.</div>
+    <div class="c card w3 k2 h" id="rc2"><small>Chunk 002</small>The company develops AI-powered educational platforms. Its flagship product is LearnSphere, launched in 2022.</div>
+    <div class="c card h" id="pa" style="width:min(430px,60vw)"><small>Prompt Assembly</small>
+      <div class="pl5 h"><b>SYSTEM INSTRUCTION:</b> Answer the user’s question using the supplied context. If the context is insufficient, say so.</div>
+      <div class="pl5 h" style="margin-top:6px"><b>RETRIEVED CONTEXT:</b> [Chunk 001 text] [Chunk 002 text]</div>
+      <div class="pl5 h" style="margin-top:6px"><b>USER QUESTION:</b> Which company developed LearnSphere, and where is it located?</div></div>
+    <div class="c h" id="llm" style="width:min(190px,26vw);height:min(190px,26vw);border-radius:50%;display:grid;place-items:center;text-align:center;font-weight:700;background:radial-gradient(circle,var(--c2),var(--c1) 70%);color:#fff;box-shadow:0 0 70px var(--c2)">LLM<span class="ring" style="position:absolute;inset:0;border-radius:50%;border:2px solid var(--c3)"></span><span class="ring" style="position:absolute;inset:0;border-radius:50%;border:2px solid var(--c3)"></span></div>
+    <div class="c card k2 h" id="ans" style="width:min(520px,80vw)"><small>Generated answer</small><span id="at" class="cur"></span></div>
+  </div>
+  <p class="note">The LLM receives the user’s question together with relevant retrieved text. It uses this context to generate a more grounded and relevant response.<i>RAG does not guarantee a perfect or hallucination-free answer.</i></p>
+</section>
+
+<!-- 6 -->
+<section class="sc" id="s5" aria-label="Step 6">
+  <h2>Step 6: Delivering the Answer</h2><p class="sub">From retrieved knowledge to a user-friendly response</p>
+  <div class="area">
+    <div class="c" id="llm6" style="width:min(150px,22vw);height:min(150px,22vw);border-radius:50%;display:grid;place-items:center;font-weight:700;background:radial-gradient(circle,var(--c2),var(--c1) 70%);color:#fff;box-shadow:0 0 50px var(--c2)">LLM</div>
+    <div class="c card k1" id="chat6" style="width:min(380px,48vw)"><small>Chat</small><span id="a6"></span><div id="src" class="h mono" style="margin-top:10px;color:var(--mut)">Sources:<br>company_knowledge.pdf — Chunk 001<br>company_knowledge.pdf — Chunk 002</div></div>
+    <div id="toks"></div>
+  </div>
+  <p class="note">The completed answer leaves the LLM as a stream of tokens and arrives in the user’s chat with its sources.<i>Generation phase</i></p>
+</section>
+
+<div class="arch h" id="arch" style="visibility:hidden">
+  <div class="flowt">INDEXING FLOW</div>
+  <div class="flow"><span class="n">Documents</span><span class="a">→</span><span class="n">Chunking</span><span class="a">→</span><span class="n">Embedding Model</span><span class="a">→</span><span class="n">Vector Database</span></div>
+  <div class="flowt">QUERY FLOW</div>
+  <div class="flow"><span class="n">User Question</span><span class="a">→</span><span class="n">Embedding Model</span><span class="a">→</span><span class="n">Vector Search</span><span class="a">→</span><span class="n">Retrieved Chunks</span><span class="a">→</span><span class="n">LLM</span><span class="a">→</span><span class="n">Final Answer</span></div>
+  <div class="big">RAG = Retrieval + Augmentation + Generation</div>
+  <p class="note" style="border:0;padding:0;max-width:620px">RAG improves LLM responses by retrieving relevant external knowledge and providing it as context during answer generation.</p>
+  <button id="replay">Replay from Beginning</button>
+</div>
+<div id="vig"></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script>
+(function(){
+  var root=document.documentElement, tb=document.getElementById('theme');
+  function setTheme(t,save){root.setAttribute('data-theme',t);tb.textContent=t==='dark'?'☾':'☀';if(save){try{localStorage.setItem('rag-theme',t)}catch(e){}}}
+  var saved=null;try{saved=localStorage.getItem('rag-theme')}catch(e){}
+  setTheme(saved||'dark');
+  tb.onclick=function(){setTheme(root.getAttribute('data-theme')==='dark'?'light':'dark',true)};
+
+  var names=['Data Loading','Embeddings','Query','Search','LLM','Answer'], nav=document.getElementById('nav');
+  names.forEach(function(n,i){var b=document.createElement('button');b.innerHTML='<b>0'+(i+1)+'</b><span>'+n+'</span>';b.setAttribute('aria-label','Go to step '+(i+1)+': '+n);b.onclick=function(){go(i)};nav.appendChild(b)});
+  var btns=nav.children;
+
+  // neural net nodes
+  var nn=document.getElementById('nn'),pts=[],L=[[20,35],[60,12],[60,35],[60,58],[100,12],[100,35],[100,58],[140,35]];
+  L.forEach(function(p,i){L.forEach(function(q,j){if(q[0]-p[0]===(i<1?40:40)&&j>i)nn.insertAdjacentHTML('beforeend','<line x1="'+p[0]+'" y1="'+p[1]+'" x2="'+q[0]+'" y2="'+q[1]+'"/>')})});
+  L.forEach(function(p){nn.insertAdjacentHTML('beforeend','<circle class="nd" cx="'+p[0]+'" cy="'+p[1]+'" r="4"/>')});
+
+  gsap.registerPlugin(ScrollTrigger);
+  var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var tl=gsap.timeline({defaults:{ease:'none'},scrollTrigger:{trigger:'#stage',start:'top top',end:'+=1200%',pin:true,scrub:reduce?true:.6,anticipatePin:1,
+    onUpdate:function(s){gsap.set('#bar',{scaleX:s.progress});var i=Math.min(5,Math.floor(s.progress*6));for(var k=0;k<6;k++)btns[k].classList.toggle('on',k===i);
+      if(!reduce)root.style.setProperty('--blur',Math.min(4,Math.abs(s.getVelocity())/700)+'px')}}});
+  var st=tl.scrollTrigger;
+  gsap.set('.c',{xPercent:-50,yPercent:-50});
+  gsap.set('#s0',{autoAlpha:1});
+
+  function type(el,txt,at,d){var o={n:0};tl.to(o,{n:txt.length,duration:d,onUpdate:function(){el.textContent=txt.slice(0,Math.round(o.n))}},at)}
+  function show(sel,at,d,v){tl.to(sel,Object.assign({opacity:1,duration:d||.6},v||{}),at)}
+
+  // scene crossfades
+  for(var i=0;i<6;i++){if(i>0)tl.to('#s'+i,{autoAlpha:1,duration:.5},i*10);if(i<5)tl.to('#s'+i,{autoAlpha:0,duration:.5},i*10+9.5)}
+
+  // S1
+  tl.fromTo('#doc',{x:'-60vw',rotationY:25},{x:0,rotationY:0,duration:1.6},0);
+  show('.cut',2,.8);tl.fromTo('.cut',{scaleX:0},{scaleX:1,duration:.8},2);
+  show('.ch1,.ch2,.ch3',3.5,.5);tl.to('#doc',{opacity:0,duration:.5},3.5);
+  tl.to('.ch1',{y:-120,duration:1.2},4).to('.ch2',{y:0,duration:1.2},4).to('.ch3',{y:120,duration:1.2},4);
+  tl.to('.ch1,.ch2,.ch3',{x:'-8vw',duration:.8},5.3);
+  show('#m1',6,.6);tl.to('#m1',{x:'30vw',duration:.1},6);
+  tl.to('.ch1,.ch2,.ch3',{x:'22vw',scale:.5,opacity:.2,duration:1.8},6.8);
+
+  // S2
+  var A=document.querySelectorAll('.a2');
+  gsap.set(A,{x:'-34vw'});gsap.set(A[0],{y:-110});gsap.set(A[2],{y:110});gsap.set('#m2',{y:-50});gsap.set('#vecs',{y:90,x:0});gsap.set('#space2',{x:0,y:-10,opacity:0});gsap.set('#db2',{x:'30vw'});
+  tl.fromTo(A,{opacity:0},{opacity:1,duration:.5},10.4);
+  tl.to(A[0],{x:'-8vw',y:-50,duration:1},11).to(A[0],{opacity:0,duration:.3},11.9);
+  tl.to('.nd',{scale:1.8,transformOrigin:'50% 50%',repeat:3,yoyo:true,duration:.25,stagger:.05},11);
+  show('#vecs',12.2,.6);tl.fromTo('#vecs>div:nth-child(1)',{opacity:0},{opacity:1,duration:.3},12.2);
+  tl.to(A[1],{x:'-8vw',y:-50,duration:.8},12.8).to(A[1],{opacity:0,duration:.2},13.5).to(A[2],{x:'-8vw',y:-50,duration:.8},13.6).to(A[2],{opacity:0,duration:.2},14.3);
+  tl.to('#m2,#vecs',{opacity:0,duration:.5},15).to('#space2',{opacity:1,duration:.6},15.3);
+  show('#db2',16.5,.5);tl.fromTo('#db2 .rec',{opacity:0,x:-30},{opacity:1,x:0,stagger:.4,duration:.4},16.8);
+
+  // S3
+  var q='Which company developed LearnSphere, and where is it located?';
+  gsap.set('#chat3',{x:'-27vw'});gsap.set('#m3',{x:'6vw',y:-20});gsap.set('#qv',{x:'6vw',y:90});gsap.set('#db3',{x:'33vw',y:-20});gsap.set('#gp',{x:'6vw',y:-20});
+  type(document.getElementById('q3'),q,20.5,3);
+  show('#m3',23.6,.5);tl.to('#chat3',{x:'-12vw',duration:1,scale:.8},23.6);
+  show('#qv',25,.6);show('#db3',25.5,.5);show('#gp',26.3,.3);tl.to('#gp',{x:'33vw',duration:1.3},26.8);
+
+  // S4
+  gsap.set('#ctx',{x:'30vw'});gsap.set('#pq',{x:-60,y:210});gsap.set('.pl',{opacity:0,transformOrigin:'50% 50%'});
+  tl.fromTo('#space4',{opacity:0,scale:.85},{opacity:1,scale:1,duration:.6},30.3);
+  tl.to('#pq',{x:320,y:200,duration:1.4},30.8);
+  tl.fromTo('.pl',{opacity:.9,scale:1},{opacity:0,scale:14,stagger:.5,duration:1.4},32.4);
+  show('.sc4',33.8,.7);
+  tl.to('#p3',{opacity:.25,duration:.5},35.2);tl.to('#p1 circle,#p2 circle',{attr:{r:17},duration:.5},35.2);
+  tl.to('#space4',{x:'-17vw',scale:.82,duration:.8},36.2);show('#ctx',36.8,.8);tl.fromTo('#ctx',{x:'38vw'},{x:'27vw',duration:.8},36.8);
+
+  // S5
+  gsap.set('#uq',{x:'-28vw',y:-120});gsap.set('#rc1',{x:'-28vw',y:-20});gsap.set('#rc2',{x:'-28vw',y:90});gsap.set('#pa',{x:0,y:0});gsap.set('#llm',{x:'30vw'});gsap.set('#ans',{x:0,y:170});
+  gsap.set('.ring',{opacity:0});
+  show('#uq',40.5,.5);show('#rc1',41.2,.5);show('#rc2',41.9,.5);
+  show('#pa',43,.5);show('#uq,#rc1,#rc2',0.0001,.0001); // keep stable
+  tl.to('#uq,#rc1,#rc2',{opacity:0,x:'-10vw',duration:.6},43);
+  tl.to('.pl5',{opacity:1,stagger:.6,duration:.4},43.4);
+  show('#llm',45.4,.5);tl.to('#pa',{x:'22vw',scale:.25,opacity:0,duration:1.2},46);
+  tl.fromTo('.ring',{opacity:.8,scale:1},{opacity:0,scale:1.8,stagger:.4,duration:1,repeat:1},47);
+  show('#ans',48.3,.4);type(document.getElementById('at'),'LearnSphere was developed by TechNova, a software company headquartered in Hyderabad.',48.6,1);
+
+  // S6
+  var ans6='LearnSphere was developed by TechNova, a software company headquartered in Hyderabad.',tk=document.getElementById('toks');
+  for(var t=0;t<8;t++)tk.insertAdjacentHTML('beforeend','<i class="c tk h" style="width:12px;height:12px;border-radius:50%;background:var(--c3);box-shadow:0 0 14px var(--c3)"></i>');
+  gsap.set('#llm6',{x:'-30vw'});gsap.set('#chat6',{x:'22vw'});gsap.set('.tk',{x:'-26vw',y:0});
+  tl.to('.tk',{opacity:1,duration:.2,stagger:.15},50.3);
+  tl.to('.tk',{x:'18vw',y:function(i){return (i-3.5)*6},duration:1.5,stagger:.15},50.5);
+  tl.to('.tk',{opacity:0,duration:.3,stagger:.1},52.2);
+  type(document.getElementById('a6'),ans6,52,1.6);
+  show('#src',53.8,.5);
+  tl.set('#arch',{visibility:'visible'},55).to('#arch',{opacity:1,duration:1},55).fromTo('#arch',{scale:.85},{scale:1,duration:1},55);
+  tl.fromTo('#arch .flow span',{opacity:0},{opacity:1,stagger:.12,duration:.3},56);
+  tl.to({},{duration:.01},60);
+
+  // ---- 3D world: camera, particles and vectors all driven by scroll progress ----
+  if(window.THREE){
+    var cv=document.getElementById('gl'),stg=document.getElementById('stage');
+    var R=new THREE.WebGLRenderer({canvas:cv,alpha:true,antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));
+    var S=new THREE.Scene(),cam=new THREE.PerspectiveCamera(55,1,.1,200);
+    function size(){R.setSize(stg.clientWidth,stg.clientHeight,false);cam.aspect=stg.clientWidth/stg.clientHeight;cam.updateProjectionMatrix()}
+    size();addEventListener('resize',size);
+    var N=reduce?150:520,pp=new Float32Array(N*3);
+    for(var j=0;j<N*3;j++)pp[j]=(Math.random()-.5)*(j%3===1?10:18);
+    var pg=new THREE.BufferGeometry();pg.setAttribute('position',new THREE.BufferAttribute(pp,3));
+    var pm=new THREE.PointsMaterial({size:.07,transparent:true,opacity:.7,depthWrite:false});
+    var pts=new THREE.Points(pg,pm);S.add(pts);
+    var grid=new THREE.GridHelper(20,20);grid.position.y=-2.6;grid.material.transparent=true;grid.material.opacity=0;
+    S.add(grid);
+    function orb(c,x,y,z){var g=new THREE.Group(),a=new THREE.Mesh(new THREE.SphereGeometry(.22,24,24),new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:0})),
+      h=new THREE.Mesh(new THREE.SphereGeometry(.55,24,24),new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:0,depthWrite:false}));
+      g.add(a,h);g.position.set(x,y,z);S.add(g);return{g:g,a:a,h:h}}
+    var o1=orb(0x3d8bff,-1.2,.6,0),o2=orb(0x9b6bff,-.2,1.1,-.8),o3=orb(0x19d3c5,2.6,-.8,.6),oq=orb(0xffc83d,-9,-1,2);
+    var lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(18),3));
+    var lm=new THREE.LineBasicMaterial({color:0xffc83d,transparent:true,opacity:0});S.add(new THREE.LineSegments(lg,lm));
+    var qEnd=new THREE.Vector3(-.65,.8,-.3),qStart=new THREE.Vector3(-9,-1,2),look=new THREE.Vector3(),sm=0,lastTheme='';
+    function ss(a,b,x){x=Math.max(0,Math.min(1,(x-a)/(b-a)));return x*x*(3-2*x)}
+    function setO(o,v,s){o.a.material.opacity=v;o.h.material.opacity=.2*v;o.g.scale.setScalar(s||1)}
+    gsap.ticker.add(function(){
+      var th=root.getAttribute('data-theme');
+      if(th!==lastTheme){lastTheme=th;var d=th==='dark';pm.color.set(d?0x7aa2ff:0x2457d6);grid.material.color.set(d?0x4a6cff:0x2457d6);pm.opacity=d?.75:.55}
+      sm+=(st.progress*6-sm)*.08;
+      var k=ss(2.3,3.6,sm),far=ss(4.6,6,sm),ang=sm*.5,rad=9-3.5*k+2.5*far;
+      cam.position.set(Math.sin(ang)*rad,1.2+.7*Math.sin(sm),Math.cos(ang)*rad);
+      look.set(-.2*k,.3*k,0);cam.lookAt(look);
+      pts.rotation.y=sm*.25;pts.rotation.x=sm*.04;
+      grid.material.opacity=.22*ss(.5,1.3,sm);
+      var vis=ss(1.3,2,sm)*(1-.6*ss(5,5.6,sm));
+      setO(o1,vis,1+.5*ss(3.8,4.2,sm));setO(o2,vis,1+.5*ss(3.8,4.2,sm));setO(o3,vis*(1-.75*ss(3.8,4.2,sm)));
+      oq.g.position.lerpVectors(qStart,qEnd,ss(2.7,3.5,sm));
+      oq.g.position.y+=.15*Math.sin(sm*8)*ss(3.5,4,sm);
+      setO(oq,ss(2.4,2.8,sm)*(1-.6*ss(5,5.6,sm)),1+.3*Math.sin(sm*12)*ss(3.6,4.4,sm));
+      var P=lg.attributes.position.array,q=oq.g.position,tg=[o1.g.position,o2.g.position,o3.g.position];
+      for(var m=0;m<3;m++){P[m*6]=q.x;P[m*6+1]=q.y;P[m*6+2]=q.z;P[m*6+3]=tg[m].x;P[m*6+4]=tg[m].y;P[m*6+5]=tg[m].z}
+      lg.attributes.position.needsUpdate=true;lm.opacity=.7*ss(3.6,4,sm)*(1-ss(4.9,5.3,sm));
+      R.render(S,cam);
+    });
+  }
+
+  function go(i){var y=st.start+((i*10+1.3)/60)*(st.end-st.start);window.scrollTo({top:y,behavior:reduce?'auto':'smooth'})}
+  document.getElementById('replay').onclick=function(){window.scrollTo({top:0,behavior:reduce?'auto':'smooth'})};
+  addEventListener('keydown',function(e){
+    var p=(scrollY-st.start)/(st.end-st.start),i=Math.max(0,Math.min(5,Math.floor(p*6)));
+    if(e.key==='ArrowDown'){e.preventDefault();go(Math.min(5,i+1))}
+    else if(e.key==='ArrowUp'){e.preventDefault();go(Math.max(0,i-1))}
+    else if(e.key==='Home'){e.preventDefault();window.scrollTo({top:0,behavior:'smooth'})}
+    else if(e.key==='End'){e.preventDefault();window.scrollTo({top:st.end,behavior:'smooth'})}
+  });
+  addEventListener('resize',function(){ScrollTrigger.refresh()});
+  ScrollTrigger.addEventListener('scrollEnd',function(){root.style.setProperty('--blur','0px')});
+})();
+</script>
+</body>
+</html>
